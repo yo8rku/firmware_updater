@@ -64,6 +64,12 @@ class MainWindow(QMainWindow):
         connection_box = QGroupBox("Serial connection — UART2, 8-N-1")
         connection_layout = QGridLayout(connection_box)
         self.port_combo = QComboBox()
+        # Editable mode also allows manually entering virtual ports that
+        # Windows/PySerial do not return from list_ports.comports().
+        self.port_combo.setEditable(True)
+        self.port_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.port_combo.setMaxVisibleItems(20)
+        self.port_combo.lineEdit().setPlaceholderText("Select or type a port, e.g. COM12")
         self.refresh_button = QPushButton("Refresh")
         self.baud_combo = QComboBox()
         for baud in (9600, 19200, 38400, 57600, 115200, 230400):
@@ -131,23 +137,30 @@ class MainWindow(QMainWindow):
         self.log_view.appendPlainText(message)
 
     def refresh_ports(self):
-        selected = self.port_combo.currentText()
-        self.port_combo.clear()
+        # Preserve manually entered virtual COM names across refreshes.
+        selected = self.port_combo.currentText().strip()
         ports = self.serial_manager.available_ports()
+        self.port_combo.clear()
         self.port_combo.addItems(ports)
-        if selected in ports:
-            self.port_combo.setCurrentText(selected)
-        if not ports:
-            self.port_combo.addItem("(no COM ports found)")
-            self.port_combo.setEnabled(False)
+        if selected:
+            self.port_combo.setEditText(selected)
+        elif ports:
+            self.port_combo.setCurrentIndex(0)
         else:
-            self.port_combo.setEnabled(True)
-        self.log(f"Serial ports refreshed: {', '.join(ports) if ports else 'none found'}")
+            self.port_combo.setEditText("")
+        self.port_combo.setEnabled(True)
+        self.log(
+            f"Serial ports detected: {', '.join(ports) if ports else 'none'}. "
+            "You can also type a COM name manually (for example COM12)."
+        )
 
     def connect_serial(self):
         port_name = self.port_combo.currentText()
-        if not port_name or port_name.startswith("("):
-            QMessageBox.warning(self, "No COM port", "Select a valid COM port first.")
+        if not port_name:
+            QMessageBox.warning(
+                self, "No COM port",
+                "Select a detected port or type a virtual COM name, for example COM12."
+            )
             return
         try:
             message = self.serial_manager.connect(port_name, int(self.baud_combo.currentData()))
